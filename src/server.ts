@@ -63,6 +63,12 @@ function renderPage(options: RenderOptions): string {
   const processedMessages = report?.processedMessages ?? 0;
   const showChart = Boolean(report);
 
+  const validMessages = report?.validMessages ?? [];
+  const invalidMessages = report?.invalidMessages ?? [];
+
+  const validMessagesJson = JSON.stringify(validMessages);
+  const invalidMessagesJson = JSON.stringify(invalidMessages);
+
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -120,6 +126,8 @@ function renderPage(options: RenderOptions): string {
       canvas {
         max-width: 640px;
         max-height: 360px;
+        display: flex;
+        margin: 0 auto;
       }
       .summary .grid {
         display: grid;
@@ -136,7 +144,53 @@ function renderPage(options: RenderOptions): string {
       }
       .summary input {
         width: 95%;
-    }
+      }
+      .filter-controls {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      .messages-container {
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fff;
+      }
+      .message-item {
+        padding: 0.75rem;
+        border-bottom: 1px solid #e2e8f0;
+        font-size: 0.875rem;
+      }
+      .message-item:last-child {
+        border-bottom: none;
+      }
+      .message-item.valid {
+        background: #ecfdf5;
+      }
+      .message-item.invalid {
+        background: #fef2f2;
+      }
+      .message-item .field {
+        margin-bottom: 0.25rem;
+      }
+      .message-item .field-label {
+        font-weight: 600;
+        color: #4b5563;
+      }
+      .message-item .broken-rules {
+        color: #dc2626;
+        font-weight: 600;
+      }
+      .hidden {
+        display: none;
+      }
+      .empty {
+        padding: 1rem;
+        text-align: center;
+        color: #6b7280;
+      }
     </style>
   </head>
   <body>
@@ -161,11 +215,13 @@ function renderPage(options: RenderOptions): string {
           <h2>Results</h2>
 
           <div class="grid">
+            <!--
             <span class="label">Prompt:</span>
-            <textarea></textarea>
+            <textarea id="promptInput"></textarea>
 
             <span class="label">Expected result:</span>
-            <input type="text" name="expectedResult" value="" />
+            <input type="text" id="expectedResult" value="" />
+            -->
 
             <span class="label">valid === true:</span>
             <span>${validTrue}</span>
@@ -180,7 +236,107 @@ function renderPage(options: RenderOptions): string {
             <span>${escapeHtml(report!.startOffset)} to ${escapeHtml(report!.latestOffsetExclusive)} (latest exclusive)</span>
           </div>
         </div>
+        </div>
           <canvas id="reportChart" width="640" height="360"></canvas>
+
+          <div class="filter-controls">
+            <label>
+              Filter by valid:
+              <select id="filterValid">
+                <option value="all">All</option>
+                <option value="true">valid === true</option>
+                <option value="false">valid === false</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="messages-container">
+            <div id="messagesList"></div>
+          </div>
+
+          <script>
+            function escapeHtml(input) {
+              return String(input)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#39;");
+            }
+
+            const validMessages = ${validMessagesJson};
+            const invalidMessages = ${invalidMessagesJson};
+
+            function renderMessages(filterValid) {
+              const container = document.getElementById('messagesList');
+              let messages = [];
+
+              if (filterValid === 'all') {
+                messages = [...invalidMessages, ...validMessages];
+              } else if (filterValid === 'true') {
+                messages = validMessages;
+              } else if (filterValid === 'false') {
+                messages = invalidMessages;
+              }
+
+              if (messages.length === 0) {
+                container.innerHTML = '<div class="empty">No messages found</div>';
+                return;
+              }
+
+              container.innerHTML = messages.map(msg => \`
+                <div class="message-item \${msg.valid ? 'valid' : 'invalid'}">
+                  <div class="field">
+                    <span class="field-label">valid:</span> \${msg.valid}
+                  </div>
+                  <div class="field">
+                    <span class="field-label">id:</span> \${escapeHtml(msg.id ?? '')}
+                  </div>
+                  <div class="field">
+                    <span class="field-label">taskRevisionId:</span> \${escapeHtml(msg.taskRevisionId ?? '')}
+                  </div>
+                  <div class="field">
+                    <span class="field-label">externalId:</span> \${escapeHtml(msg.externalId ?? '')}
+                  </div>
+                  <div class="field">
+                    <span class="field-label">jiraId:</span> \${escapeHtml(msg.jiraId ?? '')}
+                  </div>
+                  <div class="field">
+                    <span class="field-label">statusCode:</span> \${escapeHtml(msg.statusCode ?? '')}
+                  </div>
+                  <div class="field">
+                    <span class="field-label">statusText:</span> \${escapeHtml(msg.statusText ?? '')}
+                  </div>
+                  <div class="field">
+                    <span class="field-label">validationTokens:</span> \${msg.validationTokens}
+                  </div>
+                  <div class="field">
+                    <span class="field-label">validationModel:</span> \${escapeHtml(msg.validationModel ?? '')}
+                  </div>
+                  <div class="field">
+                    <span class="field-label">validationCost:</span> \${msg.validationCost}
+                  </div>
+                  <div class="field">
+                    <span class="field-label">validationDurationTime:</span> \${msg.validationDurationTime}ms
+                  </div>
+                  \${msg.brokenRules && msg.brokenRules.length > 0 ? \`
+                  <div class="field">
+                    <span class="field-label broken-rules">brokenRules:</span>
+                    <ul style="margin: 0.25rem 0 0 1.25rem; padding: 0;">
+                      \${msg.brokenRules.map(rule => \`<li>\${escapeHtml(rule)}</li>\`).join('')}
+                    </ul>
+                  </div>
+                  \` : ''}
+                </div>
+              \`).join('');
+            }
+
+            document.getElementById('filterValid').addEventListener('change', function() {
+              renderMessages(this.value);
+            });
+
+            renderMessages('all');
+          </script>
           <script>
             const ctx = document.getElementById('reportChart');
             new Chart(ctx, {

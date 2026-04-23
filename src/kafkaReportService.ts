@@ -8,6 +8,8 @@ type KafkaValidationResult = {
   processedMessages: number;
   startOffset: string;
   latestOffsetExclusive: string;
+  validMessages: ValidationMessage[];
+  invalidMessages: ValidationMessage[];
 };
 
 type ValidationMessage = {
@@ -53,6 +55,8 @@ export async function buildValidationReport(
         processedMessages: 0,
         startOffset,
         latestOffsetExclusive: startOffset,
+        validMessages: [],
+        invalidMessages: [],
       };
     }
 
@@ -80,6 +84,8 @@ export async function buildValidationReport(
         processedMessages: 0,
         startOffset,
         latestOffsetExclusive,
+        validMessages: [],
+        invalidMessages: [],
       };
     }
 
@@ -90,6 +96,8 @@ export async function buildValidationReport(
     let validTrue = 0;
     let validFalse = 0;
     let processedMessages = 0;
+    const validMessages: ValidationMessage[] = [];
+    const invalidMessages: ValidationMessage[] = [];
 
     await consumer.connect();
 
@@ -121,8 +129,10 @@ export async function buildValidationReport(
 
           if (parsed?.valid === true) {
             validTrue += 1;
+            validMessages.push(parsed);
           } else if (parsed?.valid === false) {
             validFalse += 1;
+            invalidMessages.push(parsed);
           }
 
           const lastOffsetInPartition = rangeEndExclusive - 1n;
@@ -160,6 +170,8 @@ export async function buildValidationReport(
       processedMessages,
       startOffset,
       latestOffsetExclusive,
+      validMessages,
+      invalidMessages,
     };
   } finally {
     await admin.disconnect();
@@ -216,4 +228,4 @@ function getMaxOffset(offsets: string[]): string {
   return currentMax.toString();
 }
 
-export type { KafkaValidationResult };
+export type { KafkaValidationResult, ValidationMessage };
