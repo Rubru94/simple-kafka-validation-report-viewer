@@ -1,33 +1,46 @@
-import express, { Request, Response } from 'express';
-import { config } from './config';
-import { buildValidationReport, KafkaValidationResult } from './kafkaReportService';
+import express, { Request, Response } from "express";
+import { config } from "./config";
+import {
+  buildValidationReport,
+  KafkaValidationResult,
+} from "./kafkaReportService";
 
 const app = express();
 
 app.use(express.urlencoded({ extended: false }));
 
-app.get('/', (_req: Request, res: Response) => {
-  res.send(renderPage({
-    startOffset: '0'
-  }));
+app.get("/", (_req: Request, res: Response) => {
+  res.send(
+    renderPage({
+      startOffset: "0",
+    }),
+  );
 });
 
-app.post('/report', async (req: Request, res: Response) => {
-  const startOffset = typeof req.body.startOffset === 'string' ? req.body.startOffset : '';
+app.post("/report", async (req: Request, res: Response) => {
+  const startOffset =
+    typeof req.body.startOffset === "string" ? req.body.startOffset : "";
 
   try {
     const report = await buildValidationReport(startOffset);
 
-    res.send(renderPage({
-      startOffset,
-      report
-    }));
+    res.send(
+      renderPage({
+        startOffset,
+        report,
+      }),
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error while loading Kafka report.';
-    res.status(400).send(renderPage({
-      startOffset,
-      error: message
-    }));
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unknown error while loading Kafka report.";
+    res.status(400).send(
+      renderPage({
+        startOffset,
+        error: message,
+      }),
+    );
   }
 });
 
@@ -108,6 +121,22 @@ function renderPage(options: RenderOptions): string {
         max-width: 640px;
         max-height: 360px;
       }
+      .summary .grid {
+        display: grid;
+        grid-template-columns: 180px 1fr;
+        gap: 0.5rem 1rem;
+        align-items: center;
+      }
+      .summary .label {
+        font-weight: 600;
+      }
+      .summary textarea {
+        width: 95%;
+        min-height: 60px;
+      }
+      .summary input {
+        width: 95%;
+    }
     </style>
   </head>
   <body>
@@ -123,18 +152,34 @@ function renderPage(options: RenderOptions): string {
         <button type="submit">Load report</button>
       </form>
 
-      ${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}
+      ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
 
-      ${showChart
-        ? `<div class="summary">
-            <h2>Results</h2>
-            <p><strong>Prompt:</strong> <textarea></textarea></p>
-            <p><strong>Expected result:</strong> <input type="text" name="expectedResult" value="" /></p>
-            <p><strong>valid === true:</strong> ${validTrue}</p>
-            <p><strong>valid === false:</strong> ${validFalse}</p>
-            <p><strong>messages processed:</strong> ${processedMessages}</p>
-            <p><strong>offset range:</strong> ${escapeHtml(report!.startOffset)} to ${escapeHtml(report!.latestOffsetExclusive)} (latest exclusive)</p>
+      ${
+        showChart
+          ? `
+          <div class="summary">
+          <h2>Results</h2>
+
+          <div class="grid">
+            <span class="label">Prompt:</span>
+            <textarea></textarea>
+
+            <span class="label">Expected result:</span>
+            <input type="text" name="expectedResult" value="" />
+
+            <span class="label">valid === true:</span>
+            <span>${validTrue}</span>
+
+            <span class="label">valid === false:</span>
+            <span>${validFalse}</span>
+
+            <span class="label">messages processed:</span>
+            <span>${processedMessages}</span>
+
+            <span class="label">offset range:</span>
+            <span>${escapeHtml(report!.startOffset)} to ${escapeHtml(report!.latestOffsetExclusive)} (latest exclusive)</span>
           </div>
+        </div>
           <canvas id="reportChart" width="640" height="360"></canvas>
           <script>
             const ctx = document.getElementById('reportChart');
@@ -161,7 +206,8 @@ function renderPage(options: RenderOptions): string {
               }
             });
           </script>`
-        : ''}
+          : ""
+      }
     </div>
   </body>
 </html>`;
@@ -169,9 +215,9 @@ function renderPage(options: RenderOptions): string {
 
 function escapeHtml(input: string): string {
   return input
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
