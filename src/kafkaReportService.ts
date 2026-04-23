@@ -1,4 +1,5 @@
 import { Kafka, logLevel } from "kafkajs";
+import { SchemaRegistry } from "@kafkajs/confluent-schema-registry";
 import { config } from "./config";
 
 type KafkaValidationResult = {
@@ -9,10 +10,29 @@ type KafkaValidationResult = {
   latestOffsetExclusive: string;
 };
 
+type ValidationMessage = {
+  taskRevisionId: string;
+  externalId: string;
+  jiraId: string;
+  id: string;
+  statusCode: string;
+  statusText: string;
+  valid: boolean;
+  brokenRules: string[];
+  validationTokens: number;
+  validationModel: string;
+  validationCost: number;
+  validationDurationTime: number;
+};
+
 const kafka = new Kafka({
   clientId: config.kafkaClientId,
   brokers: config.kafkaBrokers,
   logLevel: logLevel.NOTHING,
+});
+
+const registry = new SchemaRegistry({
+  host: config.schemaRegistryUrl,
 });
 
 export async function buildValidationReport(
@@ -91,26 +111,19 @@ export async function buildValidationReport(
           const rangeStart = BigInt(startOffset);
           const rangeEndExclusive = endOffsetsByPartition.get(partition);
 
-          if (!rangeEndExclusive) {
-            return;
-          }
+          if (!rangeEndExclusive) return;
+          if (currentOffset < rangeStart) return;
+          if (currentOffset >= rangeEndExclusive) return;
 
-          if (currentOffset < rangeStart) {
-            return;
-          }
-
-          if (currentOffset >= rangeEndExclusive) {
-            return;
-          }
+          const parsed = await parseKafkaMessage(message.value);
 
           processedMessages += 1;
-          classifyMessage(message.value, (isValid) => {
-            if (isValid === true) {
-              validTrue += 1;
-            } else if (isValid === false) {
-              validFalse += 1;
-            }
-          });
+
+          if (parsed?.valid === true) {
+            validTrue += 1;
+          } else if (parsed?.valid === false) {
+            validFalse += 1;
+          }
 
           const lastOffsetInPartition = rangeEndExclusive - 1n;
           if (currentOffset >= lastOffsetInPartition) {
@@ -153,6 +166,29 @@ export async function buildValidationReport(
   }
 }
 
+async function parseKafkaMessage(
+  value: Buffer | null,
+): Promise<ValidationMessage | null> {
+  if (!value) return null;
+
+  try {
+    const decoded = await registry.decode(value);
+
+    if (
+      typeof decoded === "object" &&
+      decoded !== null &&
+      typeof (decoded as any).valid === "boolean"
+    ) {
+      return decoded as ValidationMessage;
+    }
+
+    return null;
+  } catch (err) {
+    console.error("Schema decode error:", err);
+    return null;
+  }
+}
+
 function normalizeOffset(input: string): string {
   const trimmed = input.trim();
 
@@ -161,36 +197,6 @@ function normalizeOffset(input: string): string {
   }
 
   return trimmed;
-}
-
-function classifyMessage(
-  value: Buffer | null,
-  onClassified: (result: boolean | null) => void,
-): void {
-  if (!value) {
-    onClassified(null);
-    return;
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(value.toString("utf-8"));
-
-    if (typeof parsed === "object" && parsed !== null && "valid" in parsed) {
-      const validValue = (parsed as { valid: unknown }).valid;
-      if (validValue === true) {
-        onClassified(true);
-        return;
-      }
-      if (validValue === false) {
-        onClassified(false);
-        return;
-      }
-    }
-
-    onClassified(null);
-  } catch {
-    onClassified(null);
-  }
 }
 
 async function waitForCatchUp(ms: number): Promise<void> {

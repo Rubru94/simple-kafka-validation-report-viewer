@@ -16,6 +16,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@kafkajs/confluent-schema-registry": "^3.9.0",
     "avsc": "^5.7.9",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
